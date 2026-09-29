@@ -63,6 +63,26 @@ class ChildHomeTests(TestCase):
         res = self.client.get(reverse("questionnaires:child-home", args=[self.child.id]))
         self.assertEqual(res.status_code, 404)
 
+    def test_parent_can_edit_owned_child_profile(self):
+        self.client.force_login(self.parent)
+        url = reverse("questionnaires:child-edit", args=[self.child.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "編輯孩子資料")
+        response = self.client.post(url, {
+            "name": "小明更新", "birth_date": self.child.birth_date.isoformat(),
+            "medical_no": "M-123", "tracking_status": "氣喘追蹤",
+        })
+        self.assertRedirects(response, reverse("questionnaires:child-home", args=[self.child.id]))
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.name, "小明更新")
+        self.assertEqual(self.child.guardian, self.parent)
+
+    def test_parent_cannot_edit_another_parents_child(self):
+        self.client.force_login(self.other_parent)
+        response = self.client.get(reverse("questionnaires:child-edit", args=[self.child.id]))
+        self.assertEqual(response.status_code, 404)
+
     def test_staff_can_view_any_child(self):
         User = get_user_model()
         staff = User.objects.create_user("staff", password="pw", is_staff=True)

@@ -53,6 +53,22 @@ def child_add(request):
 
 
 @login_required
+def child_edit(request, child_id):
+    """Allow a parent to update a child's profile without exposing other children."""
+    child = get_object_or_404(_children_for(request), pk=child_id)
+    if request.method == "POST":
+        form = ChildForm(request.POST, instance=child)
+        if form.is_valid():
+            form.save()
+            return redirect("questionnaires:child-home", child_id=child.id)
+    else:
+        form = ChildForm(instance=child)
+    return render(request, "questionnaires/child_form.html", {
+        "form": form, "child": child, "editing": True,
+    })
+
+
+@login_required
 def child_home(request, child_id):
     """單一健康問卷入口（正式文件（五）（七））。
 

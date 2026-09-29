@@ -185,6 +185,39 @@ class ResponseFlowTests(ApiFixtureMixin, TestCase):
         self.assertEqual(response.status, QuestionnaireResponse.Status.COMPLETED)
         self.assertIsNotNone(response.completed_at)
 
+    def test_completion_returns_triggered_next_questionnaire(self):
+        source = self.version.clone_as_new_draft()
+        self.version = source
+        self.fever = Question.objects.get(section__version=source, prompt="今天是否有發燒？")
+        self.temp = Question.objects.get(section__version=source, prompt="最高體溫？")
+        tier2, _ = Tier.objects.get_or_create(code="tier2", defaults={"name": "Tier 2", "order": 2})
+        next_questionnaire = Questionnaire.objects.create(name="進階評估", tier=tier2)
+        next_version = QuestionnaireVersion.objects.create(
+            questionnaire=next_questionnaire, version_number=1,
+        )
+        next_section = Section.objects.create(version=next_version, title="評估", order=1)
+        Question.objects.create(
+            section=next_section, prompt="症狀", question_type=Question.Type.TEXT, order=1,
+        )
+        next_version.publish()
+        BranchRule.objects.create(
+            trigger_question=self.fever, trigger_operator="eq", trigger_value="yes",
+            action="show", target_questionnaire=next_questionnaire,
+        )
+        source.publish()
+
+        rid = self._start().json()["id"]
+        self.client.patch(
+            reverse("questionnaires:api-response-autosave", args=[rid]),
+            data={"answers": {str(self.fever.id): "yes", str(self.temp.id): 38.5}},
+            content_type="application/json",
+        )
+        result = self.client.post(
+            reverse("questionnaires:api-response-complete", args=[rid]),
+        )
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.json()["next_questionnaires"][0]["version_id"], next_version.id)
+
     def test_autosave_blocked_after_completion(self):
         rid = self._start().json()["id"]
         self.client.patch(

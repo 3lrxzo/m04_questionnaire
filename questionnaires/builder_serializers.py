@@ -5,6 +5,7 @@
 """
 
 from rest_framework import serializers
+from datetime import date
 
 from .models import (
     BranchRule, Category, EligibilityRule, Option, Question,
@@ -73,6 +74,32 @@ class EligibilityRuleEditSerializer(serializers.ModelSerializer):
                   "tracking_status", "condition_json")
         read_only_fields = ("id", "version")
 
+    def validate(self, attrs):
+        min_age = attrs.get("min_age_months", getattr(self.instance, "min_age_months", None))
+        max_age = attrs.get("max_age_months", getattr(self.instance, "max_age_months", None))
+        if min_age is not None and max_age is not None and min_age > max_age:
+            raise serializers.ValidationError("最大月齡不可小於最小月齡。")
+        conditions = attrs.get("condition_json", getattr(self.instance, "condition_json", {})) or {}
+        if not isinstance(conditions, dict):
+            raise serializers.ValidationError({"condition_json": "適用條件必須是 JSON 物件。"})
+        period = conditions.get("period", "any")
+        frequency = conditions.get("frequency", "any")
+        timing = conditions.get("timing", "any")
+        if period not in {value for value, _label in EligibilityRule.PERIOD_CHOICES}:
+            raise serializers.ValidationError({"condition_json": "適用時期不在支援範圍。"})
+        if frequency not in {"any", "once", "daily", "weekly", "monthly"}:
+            raise serializers.ValidationError({"condition_json": "填答頻率不在支援範圍。"})
+        if timing not in {"any", "morning", "afternoon", "evening", "before_visit", "after_visit"}:
+            raise serializers.ValidationError({"condition_json": "填答時點不在支援範圍。"})
+        try:
+            start = date.fromisoformat(conditions["start_date"]) if conditions.get("start_date") else None
+            end = date.fromisoformat(conditions["end_date"]) if conditions.get("end_date") else None
+        except (TypeError, ValueError):
+            raise serializers.ValidationError({"condition_json": "適用期間日期格式錯誤。"})
+        if start and end and end < start:
+            raise serializers.ValidationError({"condition_json": "適用迄日不可早於起日。"})
+        return attrs
+
 
 class VersionBuilderSerializer(serializers.ModelSerializer):
     """編輯器載入用的完整結構（含草稿可編輯資訊）。"""
@@ -83,13 +110,14 @@ class VersionBuilderSerializer(serializers.ModelSerializer):
     sections = serializers.SerializerMethodField()
     branch_rules = serializers.SerializerMethodField()
     eligibility_rules = EligibilityRuleEditSerializer(many=True, read_only=True)
+    target_questionnaires = serializers.SerializerMethodField()
 
     class Meta:
         model = QuestionnaireVersion
         fields = (
             "id", "questionnaire_id", "questionnaire_name", "version_number",
             "status", "is_editable", "change_note", "sections", "branch_rules",
-            "eligibility_rules",
+            "eligibility_rules", "target_questionnaires",
         )
         read_only_fields = fields
 
@@ -104,6 +132,22 @@ class VersionBuilderSerializer(serializers.ModelSerializer):
             .select_related("target_section", "target_question", "target_questionnaire")
         )
         return BranchRuleEditSerializer(rules, many=True).data
+
+    def get_target_questionnaires(self, obj):
+        questionnaires = (
+            Questionnaire.objects.filter(is_active=True)
+            .exclude(pk=obj.questionnaire_id)
+            .select_related("tier")
+            .order_by("name")
+        )
+        return [
+            {
+                "id": questionnaire.id,
+                "name": questionnaire.name,
+                "tier_name": questionnaire.tier.name if questionnaire.tier else "",
+            }
+            for questionnaire in questionnaires
+        ]
 
 
 class QuestionnaireListSerializer(serializers.ModelSerializer):

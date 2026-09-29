@@ -17,7 +17,7 @@ from rest_framework.generics import RetrieveAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .logic import compute_visibility
+from .logic import compute_visibility, get_pending_questionnaires
 from .models import Question, QuestionnaireResponse, QuestionnaireVersion
 from .serializers import (
     AutosaveSerializer,
@@ -76,7 +76,7 @@ class ResponseCompleteView(APIView):
             QuestionnaireResponse.objects.select_related("version"), pk=response_id
         )
         if response.status == QuestionnaireResponse.Status.COMPLETED:
-            return Response(ResponseReadSerializer(response).data)
+            return self._completed_payload(response)
 
         answers = {a.question_id: a.value for a in response.answers.all()}
 
@@ -97,7 +97,25 @@ class ResponseCompleteView(APIView):
             )
 
         response.mark_completed()
-        return Response(ResponseReadSerializer(response).data)
+        return self._completed_payload(response)
+
+    @staticmethod
+    def _completed_payload(response):
+        payload = ResponseReadSerializer(response).data
+        payload["next_questionnaires"] = [
+            {
+                "version_id": item["version"].id,
+                "questionnaire_name": item["version"].questionnaire.name,
+                "tier_name": (
+                    item["version"].questionnaire.tier.name
+                    if item["version"].questionnaire.tier else None
+                ),
+                "state": item["state"],
+                "response_id": item["response_id"],
+            }
+            for item in get_pending_questionnaires(response.child)
+        ]
+        return Response(payload)
 
 
 def _is_blank(value):

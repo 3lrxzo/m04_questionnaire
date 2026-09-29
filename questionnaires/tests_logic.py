@@ -14,7 +14,7 @@ from .logic import (
     get_pending_questionnaires,
 )
 from .models import (
-    BranchRule, EligibilityRule, Option, Question, Questionnaire,
+    Answer, BranchRule, EligibilityRule, Option, Question, Questionnaire,
     QuestionnaireResponse, QuestionnaireVersion, Section, Tier,
 )
 
@@ -168,6 +168,104 @@ class EligibilityTests(FeverFixtureMixin, TestCase):
         other = self._child_aged_months(36, tracking_status="一般")
         self.assertTrue(child_matches_version(matched, version))
         self.assertFalse(child_matches_version(other, version))
+
+    def test_scheduled_date_window_is_inclusive(self):
+        today = timezone.localdate()
+        version = self.build_published_fever_version(eligibility={
+            "condition_json": {
+                "start_date": (today + timedelta(days=1)).isoformat(),
+                "end_date": (today + timedelta(days=3)).isoformat(),
+            },
+        })
+        child = self._child_aged_months(36)
+        self.assertFalse(child_matches_version(child, version, as_of=today))
+        self.assertTrue(child_matches_version(child, version, as_of=today + timedelta(days=1)))
+        self.assertFalse(child_matches_version(child, version, as_of=today + timedelta(days=4)))
+
+    def test_first_visit_period_stops_applying_after_a_completed_response(self):
+        version = self.build_published_fever_version(
+            eligibility={"condition_json": {"period": "first_visit"}},
+        )
+        child = self._child_aged_months(36)
+        self.assertTrue(child_matches_version(child, version))
+        response = QuestionnaireResponse.objects.create(child=child, version=version)
+        response.mark_completed()
+        self.assertFalse(child_matches_version(child, version))
+
+    def test_daily_frequency_becomes_pending_again_the_next_day(self):
+        version = self.build_published_fever_version(eligibility={
+            "condition_json": {"frequency": "daily"},
+        })
+        child = self._child_aged_months(36)
+        response = QuestionnaireResponse.objects.create(child=child, version=version)
+        response.mark_completed()
+        self.assertEqual(get_pending_questionnaires(child), [])
+        self.assertEqual(
+            get_pending_questionnaires(child, as_of=timezone.localdate() + timedelta(days=1))[0]["version"],
+            version,
+        )
+
+    def test_cross_questionnaire_progression_requires_completed_trigger(self):
+        self.build_published_fever_version()
+        source = self.version.clone_as_new_draft()
+        self.fever = Question.objects.get(
+            section__version=source, prompt="今天是否有發燒？",
+        )
+        tier2, _ = Tier.objects.get_or_create(code="tier2", defaults={"name": "Tier 2", "order": 2})
+        target = Questionnaire.objects.create(name="進階評估", tier=tier2)
+        target_version = QuestionnaireVersion.objects.create(questionnaire=target, version_number=1)
+        section = Section.objects.create(version=target_version, title="評估", order=1)
+        Question.objects.create(section=section, prompt="症狀", question_type="text", order=1)
+        target_version.publish()
+        BranchRule.objects.create(
+            trigger_question=self.fever, trigger_operator="eq", trigger_value="yes",
+            action="show", target_questionnaire=target,
+        )
+        source.publish()
+        child = Child.objects.create(name="測試童", birth_date=timezone.localdate() - timedelta(days=365))
+
+        self.assertNotIn(target_version.id, [row["version"].id for row in get_pending_questionnaires(child)])
+        response = QuestionnaireResponse.objects.create(child=child, version=source)
+        from .models import Answer
+        Answer.objects.create(response=response, question=self.fever, value="yes")
+        response.mark_completed()
+
+        self.assertIn(target_version.id, [row["version"].id for row in get_pending_questionnaires(child)])
+
+    def test_latest_recurring_response_replaces_previous_progression(self):
+        published = self.build_published_fever_version(eligibility={
+            "condition_json": {"frequency": "daily"},
+        })
+        source = published.clone_as_new_draft()
+        fever = Question.objects.get(section__version=source, prompt="今天是否有發燒？")
+        tier2, _ = Tier.objects.get_or_create(code="tier2", defaults={"name": "Tier 2", "order": 2})
+        target = Questionnaire.objects.create(name="進階評估", tier=tier2)
+        target_version = QuestionnaireVersion.objects.create(questionnaire=target, version_number=1)
+        section = Section.objects.create(version=target_version, title="評估", order=1)
+        Question.objects.create(section=section, prompt="症狀", question_type="text", order=1)
+        target_version.publish()
+        BranchRule.objects.create(
+            trigger_question=fever, trigger_operator="eq", trigger_value="yes",
+            action="show", target_questionnaire=target,
+        )
+        source.publish()
+        child = self._child_aged_months(36)
+
+        positive = QuestionnaireResponse.objects.create(child=child, version=source)
+        Answer.objects.create(response=positive, question=fever, value="yes")
+        positive.mark_completed()
+        self.assertIn(
+            target_version.id,
+            [row["version"].id for row in get_pending_questionnaires(child)],
+        )
+
+        negative = QuestionnaireResponse.objects.create(child=child, version=source)
+        Answer.objects.create(response=negative, question=fever, value="no")
+        negative.mark_completed()
+        self.assertNotIn(
+            target_version.id,
+            [row["version"].id for row in get_pending_questionnaires(child)],
+        )
 
 
 class PendingQuestionnairesTests(FeverFixtureMixin, TestCase):

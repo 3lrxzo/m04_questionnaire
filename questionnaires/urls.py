@@ -11,6 +11,7 @@ urlpatterns = [
     # --- 家長端 ---
     path("parent/", views.parent_home, name="parent-home"),
     path("parent/child/add/", views.child_add, name="child-add"),
+    path("parent/child/<int:child_id>/edit/", views.child_edit, name="child-edit"),
     path("child/<int:child_id>/", views.child_home, name="child-home"),
     path("fill/<int:version_id>/", views.fill_page, name="fill"),
 

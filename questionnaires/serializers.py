@@ -13,6 +13,7 @@ from .models import (
     Answer, BranchRule, EligibilityRule, Option, Question,
     QuestionnaireResponse, QuestionnaireVersion, Section,
 )
+from .logic import get_pending_questionnaires
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +110,17 @@ class ResponseCreateSerializer(serializers.Serializer):
             status=QuestionnaireVersion.Status.PUBLISHED
         )
     )
+
+    def validate(self, attrs):
+        child, version = attrs["child"], attrs["version"]
+        pending_ids = {
+            item["version"].id for item in get_pending_questionnaires(child)
+        }
+        if version.id not in pending_ids:
+            raise serializers.ValidationError(
+                "此問卷目前不適用、尚未由前一份問卷觸發，或尚未到填答時間。"
+            )
+        return attrs
 
     def create(self, validated_data):
         # 已有未完成紀錄就接續它，不重複開（呼應「暫存續填」，也讓

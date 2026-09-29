@@ -85,6 +85,12 @@
     methods: {
       async load() {
         this.tree = await api(`/api/builder/versions/${cfg.versionId}/`);
+        (this.tree.eligibility_rules || []).forEach((rule) => {
+          if (!rule.condition_json) rule.condition_json = {};
+          rule.condition_json = Object.assign({
+            period: "any", frequency: "any", timing: "any", start_date: "", end_date: "",
+          }, rule.condition_json);
+        });
         // config 可能是 null，補成物件方便 v-model
         this.tree.sections.forEach((s) =>
           s.questions.forEach((q) => { if (!q.config) q.config = {}; })
@@ -93,6 +99,7 @@
         (this.tree.branch_rules || []).forEach((r) => {
           if (r.target_section) this.ruleTarget[r.id] = "section:" + r.target_section;
           else if (r.target_question) this.ruleTarget[r.id] = "question:" + r.target_question;
+          else if (r.target_questionnaire) this.ruleTarget[r.id] = "questionnaire:" + r.target_questionnaire;
         });
       },
 
@@ -276,7 +283,8 @@
       async setRuleTarget(rule) {
         const [kind, id] = this.ruleTarget[rule.id].split(":");
         const body = { target_section: null, target_question: null, target_questionnaire: null };
-        body[kind === "section" ? "target_section" : "target_question"] = Number(id);
+        body[kind === "section" ? "target_section" :
+          kind === "questionnaire" ? "target_questionnaire" : "target_question"] = Number(id);
         try {
           const updated = await api(`/api/builder/branch-rules/${rule.id}/`, "PATCH", body);
           Object.assign(rule, updated);
@@ -287,6 +295,39 @@
         try {
           await api(`/api/builder/branch-rules/${rule.id}/`, "DELETE");
           this.tree.branch_rules = this.tree.branch_rules.filter((r) => r.id !== rule.id);
+          this.afterSave();
+        } catch (e) { this.handleErr(e); }
+      },
+
+      // --- 適用與排程規則 ---
+      async addEligibilityRule() {
+        try {
+          const rule = await api(`/api/builder/versions/${cfg.versionId}/eligibility/`, "POST", {
+            condition_json: { period: "any", frequency: "any", timing: "any", start_date: "", end_date: "" },
+          });
+          rule.condition_json = Object.assign({
+            period: "any", frequency: "any", timing: "any", start_date: "", end_date: "",
+          }, rule.condition_json || {});
+          this.tree.eligibility_rules.push(rule);
+          this.afterSave();
+        } catch (e) { this.handleErr(e); }
+      },
+      saveEligibilityDebounced(rule) { this._saveEligibilityDeb(rule); },
+      async saveEligibility(rule) {
+        try {
+          await api(`/api/builder/eligibility/${rule.id}/`, "PATCH", {
+            min_age_months: rule.min_age_months === "" ? null : rule.min_age_months,
+            max_age_months: rule.max_age_months === "" ? null : rule.max_age_months,
+            tracking_status: rule.tracking_status,
+            condition_json: rule.condition_json,
+          });
+          this.afterSave();
+        } catch (e) { this.handleErr(e); }
+      },
+      async deleteEligibilityRule(rule) {
+        try {
+          await api(`/api/builder/eligibility/${rule.id}/`, "DELETE");
+          this.tree.eligibility_rules = this.tree.eligibility_rules.filter((item) => item.id !== rule.id);
           this.afterSave();
         } catch (e) { this.handleErr(e); }
       },
@@ -313,6 +354,7 @@
       this.saveQuestionDebounced = debounce(this.saveQuestion, 700);
       this._saveOptDeb = debounce(this.saveOption, 700);
       this._saveRuleDeb = debounce(this.saveRule, 700);
+      this._saveEligibilityDeb = debounce(this.saveEligibility, 700);
     },
   }).mount("#app");
 })();

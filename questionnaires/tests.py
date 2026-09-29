@@ -13,7 +13,8 @@ from django.test import TestCase
 from django.urls import reverse
 
 from .models import (
-    BranchRule, Option, Question, Questionnaire, QuestionnaireVersion, Section, Tier,
+    BranchRule, Option, Question, Questionnaire, QuestionnaireResponse,
+    QuestionnaireVersion, Section, Tier,
 )
 
 
@@ -182,11 +183,72 @@ class AdminSmokeTests(VersionFixtureMixin, TestCase):
         ]:
             self.assertEqual(self.client.get(reverse(name)).status_code, 200, name)
 
+    def test_tier_zero_through_five_are_seeded(self):
+        self.assertEqual(
+            set(Tier.objects.filter(code__startswith="tier").values_list("code", flat=True)),
+            {f"tier{i}" for i in range(6)},
+        )
+
+    def test_response_admin_supports_requested_filters(self):
+        from django.contrib.admin.sites import site
+
+        response_admin = site._registry[QuestionnaireResponse]
+        self.assertTrue({
+            "child", "status", "started_at", "version__questionnaire__tier",
+            "version__questionnaire", "version__version_number",
+        }.issubset(set(response_admin.list_filter)))
+        self.assertEqual(response_admin.date_hierarchy, "started_at")
+
     def test_version_change_page_loads_for_draft_and_published(self):
         url = reverse("admin:questionnaires_questionnaireversion_change", args=[self.version.pk])
         self.assertEqual(self.client.get(url).status_code, 200)
         self.version.publish()
-        self.assertEqual(self.client.get(url).status_code, 200)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "複製為新版本")
+
+    def test_eligibility_admin_form_presents_scheduling_controls(self):
+        from questionnaires.admin import EligibilityRuleAdminForm
+
+        form = EligibilityRuleAdminForm(data={
+            "version": self.version.pk,
+            "min_age_months": "",
+            "max_age_months": "",
+            "tracking_status": "",
+            "period": "first_visit",
+            "frequency": "weekly",
+            "timing": "after_visit",
+            "start_date": "2026-10-01",
+            "end_date": "2026-12-31",
+        })
+        self.assertIn("frequency", form.fields)
+        self.assertIn("period", form.fields)
+        self.assertIn("timing", form.fields)
+        self.assertIn("start_date", form.fields)
+        self.assertIn("end_date", form.fields)
+        self.assertTrue(form.is_valid(), form.errors)
+        rule = form.save()
+        self.assertEqual(rule.condition_json["period"], "first_visit")
+        self.assertEqual(rule.condition_json["frequency"], "weekly")
+        self.assertEqual(rule.condition_json["timing"], "after_visit")
+
+    def test_eligibility_admin_form_supports_all_period_choices(self):
+        from questionnaires.admin import EligibilityRuleAdminForm
+
+        for period in ("any", "first_visit", "daily", "phase", "tracking_period"):
+            with self.subTest(period=period):
+                form = EligibilityRuleAdminForm(data={
+                    "version": self.version.pk,
+                    "min_age_months": "",
+                    "max_age_months": "",
+                    "tracking_status": "",
+                    "period": period,
+                    "frequency": "any",
+                    "timing": "any",
+                    "start_date": "",
+                    "end_date": "",
+                })
+                self.assertTrue(form.is_valid(), form.errors)
 
     def test_publish_action_publishes(self):
         url = reverse("admin:questionnaires_questionnaireversion_changelist")

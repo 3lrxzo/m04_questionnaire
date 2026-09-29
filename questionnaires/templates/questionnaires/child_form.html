@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}登錄孩子資料{% endblock %}
+{% block title %}{% if editing %}編輯孩子資料{% else %}登錄孩子資料{% endif %}{% endblock %}
 {% block style %}{% include "_form_style.html" %}{% endblock %}
 
 {% block body %}
 <div class="authwrap">
   <a class="back" href="{% url 'questionnaires:parent-home' %}">‹ 返回</a>
-  <h1>登錄孩子資料</h1>
+  <h1>{% if editing %}編輯孩子資料{% else %}登錄孩子資料{% endif %}</h1>
   <div class="sub">系統會依孩子的年齡與追蹤狀態，決定要呈現哪些健康問卷</div>
 
   <form method="post" novalidate>

@@ -8,9 +8,11 @@ Phase 2 再視情況改成 HTMX 頁面。
 的做法，不額外引入 nested-inline 套件。
 """
 
+from django import forms
 from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
-from django.utils import timezone
+from django.urls import reverse
+from django.utils.html import format_html
 
 from .models import (
     Answer,
@@ -25,6 +27,54 @@ from .models import (
     Section,
     Tier,
 )
+
+
+class EligibilityRuleAdminForm(forms.ModelForm):
+    period = forms.ChoiceField(
+        label="適用時期",
+        choices=EligibilityRule.PERIOD_CHOICES,
+    )
+    frequency = forms.ChoiceField(
+        label="填答頻率",
+        choices=(("any", "不限"), ("once", "一次"), ("daily", "每日"),
+                 ("weekly", "每週"), ("monthly", "每月")),
+    )
+    timing = forms.ChoiceField(
+        label="建議填答時點",
+        choices=(("any", "不限時點"), ("morning", "早上"), ("afternoon", "下午"),
+                 ("evening", "晚上"), ("before_visit", "就診前"), ("after_visit", "就診後")),
+    )
+    start_date = forms.DateField(label="適用期間起日", required=False, widget=forms.DateInput(attrs={"type": "date"}))
+    end_date = forms.DateField(label="適用期間迄日", required=False, widget=forms.DateInput(attrs={"type": "date"}))
+
+    class Meta:
+        model = EligibilityRule
+        fields = ("version", "min_age_months", "max_age_months", "tracking_status")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        conditions = (self.instance.condition_json or {}) if self.instance.pk else {}
+        self.fields["period"].initial = conditions.get("period", "any")
+        self.fields["frequency"].initial = conditions.get("frequency", "any")
+        self.fields["timing"].initial = conditions.get("timing", "any")
+        self.fields["start_date"].initial = conditions.get("start_date") or None
+        self.fields["end_date"].initial = conditions.get("end_date") or None
+
+    def clean(self):
+        cleaned = super().clean()
+        start, end = cleaned.get("start_date"), cleaned.get("end_date")
+        if start and end and end < start:
+            self.add_error("end_date", "適用迄日不可早於起日。")
+        conditions = dict(self.instance.condition_json or {})
+        conditions.update({
+            "period": cleaned.get("period", "any"),
+            "frequency": cleaned.get("frequency", "any"),
+            "timing": cleaned.get("timing", "any"),
+            "start_date": start.isoformat() if start else "",
+            "end_date": end.isoformat() if end else "",
+        })
+        self.instance.condition_json = conditions
+        return cleaned
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +200,9 @@ class SectionInline(LockableInline):
 
 class EligibilityRuleInline(LockableInline):
     model = EligibilityRule
-    fields = ("min_age_months", "max_age_months", "tracking_status", "condition_json")
+    form = EligibilityRuleAdminForm
+    fields = ("min_age_months", "max_age_months", "tracking_status",
+              "period", "frequency", "timing", "start_date", "end_date")
 
 
 @admin.register(QuestionnaireVersion)
@@ -168,6 +220,20 @@ class QuestionnaireVersionAdmin(admin.ModelAdmin):
     def has_change_permission(self, request, obj=None):
         # 版本主檔的中繼欄位（change_note）永遠可編輯；內容鎖在 inline 上處理
         return super().has_change_permission(request, obj)
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        if object_id:
+            version = self.get_object(request, object_id)
+            if version and not version.is_editable:
+                messages.info(
+                    request,
+                    format_html(
+                        "此版本已鎖定，不能新增或修改適用規則。請先到<a href=\"{}\">問卷版本列表</a>，"
+                        "選取此版本並執行「複製為新版本（草稿）」，再到新草稿中調整規則。",
+                        reverse("admin:questionnaires_questionnaireversion_changelist"),
+                    ),
+                )
+        return super().changeform_view(request, object_id, form_url, extra_context)
 
     @admin.action(description="發布選取的版本")
     def action_publish(self, request, queryset):
@@ -278,6 +344,16 @@ class BranchRuleAdmin(LockWhenPublishedMixin, admin.ModelAdmin):
 class EligibilityRuleAdmin(LockWhenPublishedMixin, admin.ModelAdmin):
     list_display = ("version", "min_age_months", "max_age_months", "tracking_status")
     list_filter = ("version__status", "version__questionnaire")
+    form = EligibilityRuleAdminForm
+    fields = ("version", "min_age_months", "max_age_months", "tracking_status",
+              "period", "frequency", "timing", "start_date", "end_date")
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "version":
+            kwargs["queryset"] = QuestionnaireVersion.objects.filter(
+                status=QuestionnaireVersion.Status.DRAFT
+            ).select_related("questionnaire")
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -301,6 +377,7 @@ class QuestionnaireResponseAdmin(admin.ModelAdmin):
     list_display = ("child", "questionnaire_name", "version", "status",
                     "started_at", "completed_at", "source")
     list_filter = (
+        "child",
         "status",
         "started_at",
         "version__questionnaire__tier",

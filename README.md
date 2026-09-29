@@ -82,6 +82,7 @@ Fedora / Windows 的差異見 `.env.example` 內的註解。
 | `/accounts/login/` | 家長 | 登入 |
 | `/parent/` | 家長 | 名下孩子清單、新增孩子 |
 | `/parent/child/add/` | 家長 | 登錄孩子資料（姓名、出生日期、病歷號、追蹤狀態） |
+| `/parent/child/<id>/edit/` | 家長 | 編輯本人名下孩子的資料 |
 | `/child/<id>/` | 家長 | 該童的待填清單（未完成／未記錄）與已完成歷史 |
 | `/fill/<version_id>/?child=<id>` | 家長 | 一次一題填答頁；`?preview=1` 為預覽模式（不寫入） |
 
@@ -101,7 +102,7 @@ Questionnaire（問卷主檔：名稱／分類／Tier）
     │   └── Question（題目：單選／複選／數值／文字／量表／日期時間）
     │       └── Option（選項）
     ├── BranchRule（分支條件：某題答案 → 顯示／隱藏 某題組／題目／問卷）
-    └── EligibilityRule（適用規則：月齡區間、追蹤狀態、頻率）
+    └── EligibilityRule（適用規則：月齡區間、追蹤狀態、日期期間、頻率與建議填答時點）
 
 Child（兒童，children app）
 └── QuestionnaireResponse（一次填答，對 version 用 PROTECT）
@@ -122,6 +123,10 @@ Category / Tier（分類與分層，皆為資料表而非程式常數——
 - **「未記錄」不是欄位**：正式文件要求區分 已完成／未完成／未記錄。前兩者
   看 `QuestionnaireResponse.status`；「未記錄」是「依適用規則應該填、卻連
   一筆紀錄都沒有」，由 `logic.get_pending_questionnaires()` 推導。
+- **適用時期**：Builder 與 Admin 支援不限、首次使用、日常、階段性及特定追蹤期間。
+  `first_visit` 目前沒有獨立的就診／訪次資料，因此暫以「該兒童尚無已完成的問卷
+  填答」判定；特定追蹤期間可設定起訖日期。日常及階段性目前是規則分類，實際
+  出現頻率仍由填答頻率設定控制。
 - **分支邏輯前後端各算一份**：家長端填答頁在前端即時算可見性（避免每答一題
   打一次 server），送出時後端 `logic.compute_visibility()` 再驗一次必填。
   兩邊邏輯需保持對齊（`questionnaires/logic.py` ↔ `static/js/questionnaire_fill.js`）。
@@ -142,14 +147,19 @@ Category / Tier（分類與分層，皆為資料表而非程式常數——
 
 問卷編輯器（權限：`IsAdminUser`，需 staff 帳號），前綴 `/api/builder/`：
 問卷與版本的建立／發布／複製／停用，題組／題目／選項／分支規則／適用規則的
-CRUD，以及批次排序 `versions/<id>/reorder/`。非草稿版本的寫入回 409。
+CRUD，以及批次排序 `versions/<id>/reorder/`。Builder 提供適用月齡、追蹤狀態、
+不限／首次使用／日常／階段性／特定追蹤期間、起訖日期、填答頻率與建議填答時點設定；
+分支規則可觸發下一份問卷或 Tier。
+完成來源問卷後，符合觸發條件的問卷會加入兒童待填清單。非草稿版本的寫入回 409。
+Admin 的填答紀錄可依兒童、日期、Tier、問卷、版本與狀態篩選；已發布版本會提示
+先複製為草稿再修改規則。
 
 ---
 
 ## 開發
 
 ```bash
-python manage.py test          # 全套測試（目前 76 項）
+python manage.py test          # 全套測試
 python manage.py check
 ```
 

@@ -464,6 +464,14 @@ class BranchRule(VersionScopedModel):
 class EligibilityRule(VersionScopedModel):
     """適用規則 —— 控制「何時、對誰」呈現此問卷"""
 
+    PERIOD_CHOICES = (
+        ("any", "不限"),
+        ("first_visit", "首次使用"),
+        ("daily", "日常"),
+        ("phase", "階段性"),
+        ("tracking_period", "特定追蹤期間"),
+    )
+
     version = models.ForeignKey(
         QuestionnaireVersion, verbose_name="問卷版本",
         related_name="eligibility_rules", on_delete=models.CASCADE,
@@ -475,9 +483,7 @@ class EligibilityRule(VersionScopedModel):
     )
     condition_json = models.JSONField(
         "其他條件", default=dict, blank=True,
-        help_text="適用時期、填答頻率與填答時點等，例如 "
-                  '{"frequency": "daily"} 或 {"period": "first_visit"}。'
-                  "第一階段刻意先放 JSON 不另開欄位，待兒科部確認實際規則後再收斂",
+        help_text="Builder 以表單設定適用起訖日、填答頻率與建議填答時點。",
     )
 
     class Meta:

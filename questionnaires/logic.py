@@ -10,7 +10,8 @@ engine，此處保持最小可用。
 
 from __future__ import annotations
 
-from datetime import date
+import calendar
+from datetime import date, timedelta
 
 from django.utils import timezone
 
@@ -129,6 +130,7 @@ def compute_visibility(version, answers: dict) -> dict:
     visible_sections = section_ids - show_target_sections
     visible_questions = question_ids - show_target_questions
     triggered_questionnaires: set[int] = set()
+    hidden_questionnaires: set[int] = set()
 
     for rule in rules:
         answer_value = answers.get(rule.trigger_question_id)
@@ -146,6 +148,8 @@ def compute_visibility(version, answers: dict) -> dict:
         else:  # HIDE
             visible_sections.discard(rule.target_section_id)
             visible_questions.discard(rule.target_question_id)
+            if rule.target_questionnaire_id:
+                hidden_questionnaires.add(rule.target_questionnaire_id)
 
     # 收尾：題組被隱藏時，其下題目一併隱藏
     for section in sections:
@@ -157,6 +161,7 @@ def compute_visibility(version, answers: dict) -> dict:
         "visible_section_ids": visible_sections,
         "visible_question_ids": visible_questions,
         "triggered_questionnaire_ids": triggered_questionnaires,
+        "hidden_questionnaire_ids": hidden_questionnaires,
     }
 
 
@@ -164,19 +169,15 @@ def compute_visibility(version, answers: dict) -> dict:
 # 適用規則
 # ---------------------------------------------------------------------------
 
-def child_matches_version(child, version, as_of: date | None = None) -> bool:
-    """兒童此刻是否符合某問卷版本的適用規則。
-
-    一個版本可掛多條 EligibilityRule，任一條成立即視為適用（OR）。
-    完全沒有規則時，視為「對所有人適用」。
-    """
+def _matching_eligibility_rules(child, version, as_of):
     rules = list(version.eligibility_rules.all())
     if not rules:
-        return True
-
+        return None
     as_of = as_of or timezone.localdate()
     age_months = child.age_months(as_of)
-
+    from .models import QuestionnaireResponse
+    has_completed_response = None
+    matched = []
     for rule in rules:
         if rule.min_age_months is not None and age_months < rule.min_age_months:
             continue
@@ -184,7 +185,79 @@ def child_matches_version(child, version, as_of: date | None = None) -> bool:
             continue
         if rule.tracking_status and rule.tracking_status != child.tracking_status:
             continue
+        conditions = rule.condition_json or {}
+        if conditions.get("period", "any") == "first_visit":
+            if has_completed_response is None:
+                has_completed_response = QuestionnaireResponse.objects.filter(
+                    child=child,
+                    status=QuestionnaireResponse.Status.COMPLETED,
+                ).exists()
+            if has_completed_response:
+                continue
+        start = _condition_date(conditions.get("start_date"))
+        end = _condition_date(conditions.get("end_date"))
+        if start and as_of < start:
+            continue
+        if end and as_of > end:
+            continue
+        matched.append(rule)
+    return matched
+
+
+def child_matches_version(child, version, as_of: date | None = None) -> bool:
+    """兒童此刻是否符合某問卷版本的適用規則。
+
+    一個版本可掛多條 EligibilityRule，任一條成立即視為適用（OR）。
+    完全沒有規則時，視為「對所有人適用」。
+    """
+    rules = _matching_eligibility_rules(child, version, as_of or timezone.localdate())
+    return rules is None or bool(rules)
+
+
+def _condition_date(value):
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _frequency_allows(version, child, as_of, rules=None):
+    """Whether a questionnaire is due under its configured completion cadence."""
+    from .models import QuestionnaireResponse
+
+    rules = list(rules if rules is not None else version.eligibility_rules.all())
+    if not rules or all((rule.condition_json or {}).get("frequency", "any") == "any" for rule in rules):
         return True
+
+    completed_at = QuestionnaireResponse.objects.filter(
+        child=child,
+        version__questionnaire_id=version.questionnaire_id,
+        status=QuestionnaireResponse.Status.COMPLETED,
+        completed_at__isnull=False,
+    ).values_list("completed_at", flat=True)
+    completed_dates = [timezone.localtime(value).date() for value in completed_at]
+    if not completed_dates:
+        return True
+    last_completed = max(completed_dates)
+
+    # Eligibility rules are alternatives: any matching frequency can make it due.
+    for rule in rules:
+        frequency = (rule.condition_json or {}).get("frequency", "any")
+        if frequency == "any":
+            return True
+        if frequency == "daily" and last_completed < as_of:
+            return True
+        if frequency == "weekly" and last_completed <= as_of - timedelta(days=7):
+            return True
+        if frequency == "monthly":
+            year, month = last_completed.year, last_completed.month + 1
+            if month > 12:
+                year, month = year + 1, 1
+            due_day = min(last_completed.day, calendar.monthrange(year, month)[1])
+            if as_of >= date(year, month, due_day):
+                return True
     return False
 
 
@@ -213,9 +286,8 @@ def get_pending_questionnaires(child, as_of: date | None = None) -> list:
         {"version": QuestionnaireVersion, "state": "in_progress"|"unrecorded",
          "response_id": int|None}
 
-    注意：本函式尚未處理 EligibilityRule.condition_json 裡的填答頻率
-    （daily/weekly…）。第一階段先以「有無紀錄」判斷；頻率規則待兒科部
-    確認實際定義後於 condition_json 消費端補上。
+    condition_json 的排程期間與頻率亦在此處套用；完成跨問卷分支後才會
+    將被指定的問卷加入待填清單。
     """
     from .models import Questionnaire, QuestionnaireResponse, QuestionnaireVersion
 
@@ -255,13 +327,60 @@ def get_pending_questionnaires(child, as_of: date | None = None) -> list:
         elif row["status"] == QuestionnaireResponse.Status.IN_PROGRESS:
             entry["in_progress_id"] = row["id"]
 
-    for questionnaire_id, version in latest_by_questionnaire.items():
-        if not child_matches_version(child, version, as_of):
+    # Branch-target questionnaires are gated until a completed source response
+    # actually satisfies the cross-questionnaire rule.
+    from .models import BranchRule
+    gated_targets = set(
+        BranchRule.objects.filter(
+            target_questionnaire_id__in=latest_by_questionnaire,
+            action=BranchRule.Action.SHOW,
+            trigger_question__section__version__status__in=(
+                QuestionnaireVersion.Status.PUBLISHED, QuestionnaireVersion.Status.RETIRED,
+            ),
+        )
+        .values_list("target_questionnaire_id", flat=True)
+    )
+    triggered_targets: set[int] = set()
+    hidden_targets: set[int] = set()
+    completed_responses = (
+        QuestionnaireResponse.objects
+        .filter(child=child, status=QuestionnaireResponse.Status.COMPLETED)
+        .select_related("version__questionnaire")
+        .prefetch_related("answers")
+        .order_by("-completed_at", "-started_at", "-pk")
+    )
+    evaluated_sources: set[int] = set()
+    for response in completed_responses:
+        source_questionnaire_id = response.version.questionnaire_id
+        if source_questionnaire_id in evaluated_sources:
             continue
+        evaluated_sources.add(source_questionnaire_id)
+        answers = {answer.question_id: answer.value for answer in response.answers.all()}
+        visibility = compute_visibility(response.version, answers)
+        triggered_targets.update(visibility["triggered_questionnaire_ids"])
+        hidden_targets.update(visibility["hidden_questionnaire_ids"])
 
-        entry = by_questionnaire.get(questionnaire_id, {})
-        if entry.get("completed"):
+    for questionnaire_id, version in latest_by_questionnaire.items():
+        eligibility_rules = _matching_eligibility_rules(child, version, as_of)
+        if eligibility_rules is not None and not eligibility_rules:
             continue
+        if questionnaire_id in gated_targets and questionnaire_id not in triggered_targets:
+            continue
+        if questionnaire_id in hidden_targets:
+            continue
+        entry = by_questionnaire.get(questionnaire_id, {})
+        frequency_rules = eligibility_rules or []
+        if not entry.get("in_progress_id") and not _frequency_allows(
+            version, child, as_of, rules=frequency_rules,
+        ):
+            continue
+        if entry.get("completed"):
+            recurring = any(
+                (rule.condition_json or {}).get("frequency", "any") in {"daily", "weekly", "monthly"}
+                for rule in frequency_rules
+            )
+            if not recurring:
+                continue
         if entry.get("in_progress_id"):
             pending.append({
                 "version": version,
