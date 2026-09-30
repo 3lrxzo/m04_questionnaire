@@ -66,16 +66,21 @@ class ChildHomeTests(TestCase):
     def test_parent_can_edit_owned_child_profile(self):
         self.client.force_login(self.parent)
         url = reverse("questionnaires:child-edit", args=[self.child.id])
+        original_birth_date = self.child.birth_date
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "編輯孩子資料")
+        self.assertContains(response, f'value="{original_birth_date:%Y-%m-%d}"')
         response = self.client.post(url, {
-            "name": "小明更新", "birth_date": self.child.birth_date.isoformat(),
-            "medical_no": "M-123", "tracking_status": "氣喘追蹤",
+            "name": "小明更新", "national_id": "A123456789",
+            "birth_date": original_birth_date.isoformat(),
+            "tracking_status": "氣喘追蹤",
         })
         self.assertRedirects(response, reverse("questionnaires:child-home", args=[self.child.id]))
         self.child.refresh_from_db()
         self.assertEqual(self.child.name, "小明更新")
+        self.assertEqual(self.child.national_id, "A123456789")
+        self.assertEqual(self.child.birth_date, original_birth_date)
         self.assertEqual(self.child.guardian, self.parent)
 
     def test_parent_cannot_edit_another_parents_child(self):
@@ -101,14 +106,14 @@ class ChildHomeTests(TestCase):
         self.assertContains(res, "小明")
         self.assertContains(res, "小華")
 
-    def test_parent_home_redirects_to_add_when_no_children(self):
+    def test_parent_home_shows_profile_link_when_no_children(self):
         User = get_user_model()
         childless = User.objects.create_user("childless", password="pw")
         self.client.force_login(childless)
         res = self.client.get(reverse("questionnaires:parent-home"))
-        self.assertRedirects(
-            res, reverse("questionnaires:child-add"), fetch_redirect_response=False,
-        )
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "尚未新增孩子資料")
+        self.assertContains(res, reverse("accounts:profile"))
 
     def test_requires_login(self):
         res = self.client.get(reverse("questionnaires:child-home", args=[self.child.id]))

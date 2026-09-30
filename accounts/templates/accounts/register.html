@@ -6,7 +6,7 @@
 <div class="authwrap">
   <a class="back" href="{% url 'questionnaires:landing' %}">‹ 回首頁</a>
   <h1>家長註冊</h1>
-  <div class="sub">建立帳號後即可登錄孩子資料並開始填寫健康問卷</div>
+  <div class="sub">請填寫姓名、身分證、電話號碼及電子郵件，並設定密碼</div>
 
   {% if form.non_field_errors %}
     <div class="nonfield">{{ form.non_field_errors|join:"；" }}</div>

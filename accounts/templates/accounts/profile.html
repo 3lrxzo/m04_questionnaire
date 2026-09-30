@@ -1,13 +1,12 @@
 {% extends "base.html" %}
-{% block title %}{% if editing %}編輯孩子資料{% else %}登錄孩子資料{% endif %}{% endblock %}
+{% block title %}編輯個人資料{% endblock %}
 {% block style %}{% include "_form_style.html" %}{% endblock %}
 
 {% block body %}
 <div class="authwrap">
   <a class="back" href="{% url 'questionnaires:parent-home' %}">‹ 返回</a>
-  <a class="back" href="{% url 'accounts:profile' %}">編輯個人資料</a>
-  <h1>{% if editing %}編輯孩子資料{% else %}登錄孩子資料{% endif %}</h1>
-  <div class="sub">系統會依孩子的年齡與追蹤狀態，決定要呈現哪些健康問卷；出生超過60天須填寫身分證。</div>
+  <h1>編輯個人資料</h1>
+  <div class="sub">更新你的姓名、身分證、電話與電子郵件；密碼可選擇修改</div>
 
   <form method="post" novalidate>
     {% csrf_token %}

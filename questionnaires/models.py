@@ -6,6 +6,7 @@
 （分類、分層、題型選項、分支條件），都以資料表而非程式常數表達。
 """
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 
@@ -75,6 +76,10 @@ class Questionnaire(models.Model):
     )
     is_active = models.BooleanField("啟用", default=True)
     created_at = models.DateTimeField("建立時間", auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name="建立者", related_name="created_questionnaires",
+        null=True, blank=True, on_delete=models.SET_NULL,
+    )
 
     class Meta:
         verbose_name = "問卷"
@@ -112,8 +117,17 @@ class QuestionnaireVersion(models.Model):
     status = models.CharField("狀態", max_length=20, choices=Status.choices, default=Status.DRAFT)
     change_note = models.TextField("改版說明", blank=True)
     published_at = models.DateTimeField("發布時間", null=True, blank=True)
+    published_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name="發布者",
+        related_name="published_questionnaire_versions",
+        null=True, blank=True, on_delete=models.SET_NULL,
+    )
     retired_at = models.DateTimeField("停用時間", null=True, blank=True)
     created_at = models.DateTimeField("建立時間", auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name="建立者", related_name="created_questionnaire_versions",
+        null=True, blank=True, on_delete=models.SET_NULL,
+    )
 
     class Meta:
         verbose_name = "問卷版本"
@@ -160,7 +174,7 @@ class QuestionnaireVersion(models.Model):
         super().save(*args, **kwargs)
 
     @transaction.atomic
-    def publish(self):
+    def publish(self, published_by=None):
         from django.utils import timezone
 
         if self.status != self.Status.DRAFT:
@@ -169,7 +183,8 @@ class QuestionnaireVersion(models.Model):
             raise ValidationError("此版本尚無任何題目，無法發布。")
         self.status = self.Status.PUBLISHED
         self.published_at = timezone.now()
-        self.save(update_fields=["status", "published_at"])
+        self.published_by = published_by
+        self.save(update_fields=["status", "published_at", "published_by"])
 
     @transaction.atomic
     def retire(self):
@@ -182,7 +197,7 @@ class QuestionnaireVersion(models.Model):
         self.save(update_fields=["status", "retired_at"])
 
     @transaction.atomic
-    def clone_as_new_draft(self):
+    def clone_as_new_draft(self, created_by=None):
         """深拷貝本版本的全部內容成為新的草稿版本。
 
         這是「修改已發布問卷」的唯一正當途徑：正式文件（八）要求既有填答
@@ -199,6 +214,7 @@ class QuestionnaireVersion(models.Model):
             version_number=next_number,
             status=self.Status.DRAFT,
             change_note=f"複製自 v{self.version_number}",
+            created_by=created_by or self.created_by or self.questionnaire.created_by,
         )
 
         section_map, question_map = {}, {}

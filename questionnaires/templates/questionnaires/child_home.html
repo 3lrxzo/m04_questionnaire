@@ -30,7 +30,10 @@
     <h1>{{ child.name }}</h1>
     <span class="age">{{ child.age_months }} 個月</span>
   </div>
-  <p><a class="back" href="{% url 'questionnaires:child-edit' child.id %}">編輯孩子資料</a></p>
+  <p>
+    <a class="back" href="{% url 'questionnaires:child-edit' child.id %}">編輯孩子資料</a>
+    · <a class="back" href="{% url 'accounts:profile' %}">編輯個人資料</a>
+  </p>
 
   <h2 class="section">待填寫</h2>
   {% for item in pending %}

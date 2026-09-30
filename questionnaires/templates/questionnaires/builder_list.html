@@ -17,6 +17,7 @@
   .versions { display: flex; flex-direction: column; gap: 8px; }
   .vrow { display: flex; align-items: center; gap: 12px; padding: 9px 12px; background: var(--bg); border-radius: 8px; }
   .vrow .vn { font-weight: 600; min-width: 42px; }
+  .vrow .vmeta { color: var(--muted); font-size: .76rem; }
   .badge { font-size: .72rem; padding: 3px 9px; border-radius: 999px; }
   .badge.draft { background: #e5e7eb; color: #444; }
   .badge.published { background: #dcecdf; color: #2f6f4f; }
@@ -110,6 +111,7 @@ async function render() {
           <div class="vrow">
             <span class="vn">v${v.version_number}</span>
             ${badge(v.status, v.status_label)}
+            <span class="vmeta">${esc(formatCreatedAt(v.created_at))} ・ 發布者：${esc(v.published_by_name)}</span>
             <span class="spacer"></span>
             ${v.status === "draft"
               ? `<a class="btn-ghost" href="/build/version/${v.id}/">編輯</a>`
@@ -128,6 +130,18 @@ async function render() {
 }
 
 function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+function formatCreatedAt(value) {
+  return new Intl.DateTimeFormat("zh-TW", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
+}
 
 async function clone(versionId) {
   try {

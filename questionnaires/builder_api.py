@@ -108,7 +108,7 @@ class VersionPublishView(BuilderBase, APIView):
     def post(self, request, version_id):
         version = get_object_or_404(QuestionnaireVersion, pk=version_id)
         try:
-            version.publish()
+            version.publish(published_by=request.user)
         except DjangoValidationError as exc:
             return Response({"detail": "；".join(exc.messages)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(VersionBuilderSerializer(version).data)
@@ -117,7 +117,7 @@ class VersionPublishView(BuilderBase, APIView):
 class VersionCloneView(BuilderBase, APIView):
     def post(self, request, version_id):
         version = get_object_or_404(QuestionnaireVersion, pk=version_id)
-        new_version = version.clone_as_new_draft()
+        new_version = version.clone_as_new_draft(created_by=request.user)
         return Response(VersionBuilderSerializer(new_version).data, status=status.HTTP_201_CREATED)
 
 

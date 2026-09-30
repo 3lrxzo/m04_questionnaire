@@ -154,11 +154,15 @@ class QuestionnaireListSerializer(serializers.ModelSerializer):
     versions = serializers.SerializerMethodField()
     tier_name = serializers.CharField(source="tier.name", read_only=True, default=None)
     category_name = serializers.CharField(source="category.name", read_only=True, default=None)
+    created_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Questionnaire
         fields = ("id", "name", "description", "category", "category_name",
-                  "tier", "tier_name", "is_active", "created_at", "versions")
+                  "tier", "tier_name", "is_active", "created_at", "created_by_name", "versions")
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.get_username() if obj.created_by else "未記錄"
 
     def get_versions(self, obj):
         return [
@@ -167,6 +171,8 @@ class QuestionnaireListSerializer(serializers.ModelSerializer):
                 "version_number": v.version_number,
                 "status": v.status,
                 "status_label": v.get_status_display(),
+                "created_at": v.created_at,
+                "published_by_name": v.published_by.get_username() if v.published_by else "未記錄",
                 "published_at": v.published_at,
             }
             for v in obj.versions.order_by("version_number")
@@ -179,6 +185,13 @@ class QuestionnaireCreateSerializer(serializers.ModelSerializer):
         fields = ("id", "name", "description", "category", "tier")
 
     def create(self, validated_data):
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            validated_data["created_by"] = request.user
         questionnaire = super().create(validated_data)
-        QuestionnaireVersion.objects.create(questionnaire=questionnaire, version_number=1)
+        QuestionnaireVersion.objects.create(
+            questionnaire=questionnaire,
+            version_number=1,
+            created_by=validated_data.get("created_by"),
+        )
         return questionnaire

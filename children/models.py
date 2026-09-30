@@ -13,6 +13,7 @@ class Child(models.Model):
 
     name = models.CharField("姓名", max_length=100)
     birth_date = models.DateField("出生日期", help_text="用於計算月齡，供問卷適用規則比對")
+    national_id = models.CharField("身分證（選填）", max_length=20, blank=True)
     medical_no = models.CharField(
         "病歷號", max_length=50, blank=True, db_index=True,
         help_text="院內識別碼；日後對接共用兒童主檔時作為接點",
@@ -27,8 +28,13 @@ class Child(models.Model):
     )
     tracking_status = models.CharField(
         "追蹤狀態", max_length=50, blank=True, db_index=True,
-        help_text="例如：一般、氣喘追蹤、早療追蹤。第一階段先用自由文字，"
-                  "待兒科部確認可用值後再收斂",
+        choices=(
+            ("", "請選擇"),
+            ("一般", "一般"),
+            ("氣喘追蹤", "氣喘追蹤"),
+            ("早療追蹤", "早療追蹤"),
+            ("其他", "其他"),
+        ),
     )
     is_active = models.BooleanField("啟用", default=True)
     created_at = models.DateTimeField("建立時間", auto_now_add=True)

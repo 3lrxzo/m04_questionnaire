@@ -32,8 +32,6 @@ def _children_for(request):
 def parent_home(request):
     """家長端主頁：名下孩子清單 + 新增孩子入口。"""
     children = list(_children_for(request))
-    if not children:
-        return redirect("questionnaires:child-add")
     return render(request, "questionnaires/parent_home.html", {"children": children})
 
 

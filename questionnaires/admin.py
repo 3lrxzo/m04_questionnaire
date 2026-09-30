@@ -165,11 +165,19 @@ class QuestionnaireVersionInline(admin.TabularInline):
 
 @admin.register(Questionnaire)
 class QuestionnaireAdmin(admin.ModelAdmin):
-    list_display = ("name", "category", "tier", "is_active", "latest_version_display", "created_at")
+    list_display = (
+        "name", "category", "tier", "is_active", "latest_version_display",
+        "created_at", "created_by",
+    )
     list_filter = ("is_active", "category", "tier")
     search_fields = ("name", "description")
-    readonly_fields = ("created_at",)
+    readonly_fields = ("created_at", "created_by")
     inlines = [QuestionnaireVersionInline]
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
 
     @admin.display(description="最新版本")
     def latest_version_display(self, obj):
@@ -183,7 +191,11 @@ class QuestionnaireAdmin(admin.ModelAdmin):
         # 建立問卷主檔時，若尚無任何版本，順手開一個 v1 草稿
         questionnaire = form.instance
         if not questionnaire.versions.exists():
-            QuestionnaireVersion.objects.create(questionnaire=questionnaire, version_number=1)
+            QuestionnaireVersion.objects.create(
+                questionnaire=questionnaire,
+                version_number=1,
+                created_by=request.user,
+            )
             messages.info(request, "已自動建立 v1 草稿，可點入版本開始設計題目。")
 
 
@@ -207,10 +219,16 @@ class EligibilityRuleInline(LockableInline):
 
 @admin.register(QuestionnaireVersion)
 class QuestionnaireVersionAdmin(admin.ModelAdmin):
-    list_display = ("questionnaire", "version_number", "status", "published_at", "created_at")
+    list_display = (
+        "questionnaire", "version_number", "status", "created_at",
+        "published_by", "published_at",
+    )
     list_filter = ("status", "questionnaire__tier", "questionnaire__category")
     search_fields = ("questionnaire__name",)
-    readonly_fields = ("version_number", "status", "published_at", "retired_at", "created_at")
+    readonly_fields = (
+        "version_number", "status", "published_at", "published_by",
+        "retired_at", "created_at", "created_by",
+    )
     inlines = [SectionInline, EligibilityRuleInline]
     actions = ["action_publish", "action_retire", "action_clone"]
 
@@ -240,7 +258,7 @@ class QuestionnaireVersionAdmin(admin.ModelAdmin):
         done, failed = 0, []
         for version in queryset:
             try:
-                version.publish()
+                version.publish(published_by=request.user)
                 done += 1
             except ValidationError as exc:
                 failed.append(f"{version}：{'; '.join(exc.messages)}")
@@ -267,7 +285,7 @@ class QuestionnaireVersionAdmin(admin.ModelAdmin):
     def action_clone(self, request, queryset):
         created = []
         for version in queryset:
-            new_version = version.clone_as_new_draft()
+            new_version = version.clone_as_new_draft(created_by=request.user)
             created.append(str(new_version))
         self.message_user(
             request,
@@ -384,7 +402,10 @@ class QuestionnaireResponseAdmin(admin.ModelAdmin):
         "version__questionnaire",
         "version__version_number",
     )
-    search_fields = ("child__name", "child__medical_no", "version__questionnaire__name")
+    search_fields = (
+        "child__name", "child__national_id", "child__medical_no",
+        "version__questionnaire__name",
+    )
     date_hierarchy = "started_at"
     readonly_fields = ("child", "version", "source", "started_at", "updated_at", "completed_at")
     inlines = [AnswerInline]

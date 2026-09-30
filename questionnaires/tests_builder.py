@@ -26,8 +26,14 @@ class BuilderApiTests(TestCase):
         )
         self.assertEqual(res.status_code, 201)
         q = Questionnaire.objects.get(name="氣喘週追蹤")
+        self.assertEqual(q.created_by, self.staff)
         self.assertEqual(q.versions.count(), 1)
         self.assertEqual(q.versions.first().status, QuestionnaireVersion.Status.DRAFT)
+        self.assertEqual(q.versions.first().created_by, self.staff)
+        self.assertEqual(res.json()["created_by_name"], self.staff.username)
+        self.assertIn("created_at", res.json())
+        self.assertEqual(res.json()["versions"][0]["published_by_name"], "未記錄")
+        self.assertIn("created_at", res.json()["versions"][0])
 
     def test_non_staff_forbidden(self):
         self.client.force_login(self.plain)
@@ -249,6 +255,30 @@ class BuilderApiTests(TestCase):
         self.assertEqual(r.status_code, 201)
         self.assertEqual(r.json()["version_number"], 2)
         self.assertEqual(r.json()["status"], "draft")
+        cloned_version = QuestionnaireVersion.objects.get(pk=r.json()["id"])
+        self.assertEqual(cloned_version.created_by, self.staff)
+
+    def test_publishing_version_records_publisher(self):
+        version = self._new_version()
+        section = Section.objects.create(version=version, title="題組", order=1)
+        Question.objects.create(
+            section=section, prompt="題目", question_type="text", order=1,
+        )
+
+        response = self.client.post(
+            reverse("builder:api-version-publish", args=[version.id]),
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        version.refresh_from_db()
+        self.assertEqual(version.published_by, self.staff)
+
+        questionnaire_response = self.client.get(
+            reverse("builder:api-questionnaires"),
+        )
+        self.assertEqual(
+            questionnaire_response.json()[0]["versions"][0]["published_by_name"],
+            self.staff.username,
+        )
 
     def test_publish_empty_version_rejected(self):
         version = self._new_version()

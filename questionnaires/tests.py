@@ -183,6 +183,20 @@ class AdminSmokeTests(VersionFixtureMixin, TestCase):
         ]:
             self.assertEqual(self.client.get(reverse(name)).status_code, 200, name)
 
+    def test_questionnaire_admin_shows_read_only_creator_and_creation_time(self):
+        from django.contrib.admin.sites import site
+
+        questionnaire_admin = site._registry[Questionnaire]
+        self.assertIn("created_at", questionnaire_admin.list_display)
+        self.assertIn("created_by", questionnaire_admin.list_display)
+        self.assertIn("created_at", questionnaire_admin.readonly_fields)
+        self.assertIn("created_by", questionnaire_admin.readonly_fields)
+        version_admin = site._registry[QuestionnaireVersion]
+        self.assertIn("created_at", version_admin.list_display)
+        self.assertIn("published_by", version_admin.list_display)
+        self.assertIn("created_by", version_admin.readonly_fields)
+        self.assertIn("published_by", version_admin.readonly_fields)
+
     def test_tier_zero_through_five_are_seeded(self):
         self.assertEqual(
             set(Tier.objects.filter(code__startswith="tier").values_list("code", flat=True)),
@@ -258,6 +272,7 @@ class AdminSmokeTests(VersionFixtureMixin, TestCase):
         })
         self.version.refresh_from_db()
         self.assertEqual(self.version.status, QuestionnaireVersion.Status.PUBLISHED)
+        self.assertEqual(self.version.published_by, self.admin)
 
     def test_clone_action_creates_draft(self):
         self.version.publish()

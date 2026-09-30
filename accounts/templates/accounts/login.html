@@ -15,8 +15,9 @@
   <form method="post">
     {% csrf_token %}
     <div class="f">
-      <label for="{{ form.username.id_for_label }}">帳號</label>
+      <label for="{{ form.username.id_for_label }}">{{ form.username.label }}</label>
       {{ form.username }}
+      {% if form.username.help_text %}<span class="helptext">{{ form.username.help_text }}</span>{% endif %}
       {{ form.username.errors }}
     </div>
     <div class="f">

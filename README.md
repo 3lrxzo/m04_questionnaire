@@ -75,13 +75,14 @@ Fedora / Windows 的差異見 `.env.example` 內的註解。
 | 網址 | 對象 | 說明 |
 |---|---|---|
 | `/` | 全體 | 首頁，選擇「家長」或「醫護人員」入口 |
-| `/admin/` | 工程 | Django Admin，完整的資料維護 |
+| `/admin/` | 工程 | Django Admin，完整的資料維護；僅超級使用者可新增或刪除帳號 |
 | `/build/` | 兒科部醫護 | 問卷管理列表（新增問卷、看各版本狀態） |
 | `/build/version/<id>/` | 兒科部醫護 | 三欄視覺化編輯器：大綱 / 題目卡 / 家長端即時預覽 |
-| `/accounts/register/` | 家長 | 註冊帳號（成功後導向登錄第一個孩子） |
+| `/accounts/register/` | 家長 | 以姓名、身分證、電話、電子郵件與密碼註冊 |
 | `/accounts/login/` | 家長 | 登入 |
+| `/accounts/profile/` | 家長 | 編輯自己的姓名、身分證、電話、電子郵件與密碼 |
 | `/parent/` | 家長 | 名下孩子清單、新增孩子 |
-| `/parent/child/add/` | 家長 | 登錄孩子資料（姓名、出生日期、病歷號、追蹤狀態） |
+| `/parent/child/add/` | 家長 | 登錄孩子資料（姓名、選填身分證、出生日期、追蹤狀態） |
 | `/parent/child/<id>/edit/` | 家長 | 編輯本人名下孩子的資料 |
 | `/child/<id>/` | 家長 | 該童的待填清單（未完成／未記錄）與已完成歷史 |
 | `/fill/<version_id>/?child=<id>` | 家長 | 一次一題填答頁；`?preview=1` 為預覽模式（不寫入） |
@@ -96,8 +97,9 @@ Fedora / Windows 的差異見 `.env.example` 內的註解。
 應用程式：`accounts`（家長帳號）、`children`（兒童）、`questionnaires`（問卷核心）
 
 ```
-Questionnaire（問卷主檔：名稱／分類／Tier）
+Questionnaire（問卷主檔：名稱／分類／Tier／建立時間與建立者）
 └── QuestionnaireVersion（版本：草稿→已發布→已停用，發布後內容鎖定）
+    （各版本另記錄建立時間，以及發布時的發布者）
     ├── Section（題組）
     │   └── Question（題目：單選／複選／數值／文字／量表／日期時間）
     │       └── Option（選項）

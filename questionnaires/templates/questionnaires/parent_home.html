@@ -23,7 +23,11 @@
 <div class="wrap">
   <div class="head">
     <h1>我的孩子</h1>
-    <span class="who">{{ user.get_full_name|default:user.username }}　·　{% include "_logout_link.html" %}</span>
+    <span class="who">
+      {{ user.get_full_name|default:user.username }}　
+      <a href="{% url 'accounts:profile' %}">編輯個人資料</a>　·　
+      {% include "_logout_link.html" %}
+    </span>
   </div>
   <div class="sub">點孩子的名字進入健康問卷</div>
 
@@ -39,6 +43,9 @@
       <span class="arrow">›</span>
     </a>
   {% endfor %}
+  {% if not children %}
+    <p class="sub">尚未新增孩子資料</p>
+  {% endif %}
 
   <a class="add" href="{% url 'questionnaires:child-add' %}">＋ 新增孩子</a>
 </div>
