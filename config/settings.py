@@ -160,3 +160,25 @@ REST_FRAMEWORK = {
 
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+# ============================================================
+# 金寶貝 API
+# ============================================================
+
+GOLDEN_BABY_API_URL = os.getenv(
+    "GOLDEN_BABY_API_URL",
+    "https://icare.docter.pro/back-end/app",
+)
+
+GOLDEN_BABY_API_ACCOUNT = os.getenv(
+    "GOLDEN_BABY_API_ACCOUNT",
+    "",
+)
+
+GOLDEN_BABY_API_PASSWORD = os.getenv(
+    "GOLDEN_BABY_API_PASSWORD",
+    "",
+)
+GOLDEN_BABY_API_MOCK = os.getenv(
+    "GOLDEN_BABY_API_MOCK",
+    "true",
+).lower() == "true"

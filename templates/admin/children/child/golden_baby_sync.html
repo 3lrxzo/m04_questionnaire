@@ -1,0 +1,94 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<h1>金寶貝兒童資料同步</h1>
+
+<!-- ========================= -->
+<!-- 目前 API 模式 -->
+<!-- ========================= -->
+<div class="module">
+    <h2>目前資料來源</h2>
+
+    <div style="padding: 15px;">
+        {% if golden_baby_mock %}
+            <p style="font-size: 16px; margin: 0 0 8px 0;">
+                🟡 <strong>MOCK 模擬模式</strong>
+            </p>
+
+            <p style="margin: 0;">
+                目前使用專題測試資料，不會連線正式金寶貝 API。
+            </p>
+        {% else %}
+            <p style="font-size: 16px; margin: 0 0 8px 0;">
+                🟢 <strong>正式 API 模式</strong>
+            </p>
+
+            <p style="margin: 0;">
+                目前資料由正式金寶貝 API 取得。
+            </p>
+        {% endif %}
+    </div>
+</div>
+
+
+{% if error %}
+
+<div class="errornote">
+    無法取得金寶貝資料：{{ error }}
+</div>
+
+<p>
+    <a href="{% url 'admin:children_child_changelist' %}">
+        返回兒童資料
+    </a>
+</p>
+
+{% else %}
+
+<div class="module">
+    <h2>同步預覽</h2>
+
+    <table>
+        <tbody>
+            <tr>
+                <th>準備新增</th>
+                <td>{{ result.created }} 筆</td>
+            </tr>
+
+            <tr>
+                <th>準備更新</th>
+                <td>{{ result.updated }} 筆</td>
+            </tr>
+
+            <tr>
+                <th>略過</th>
+                <td>{{ result.skipped }} 筆</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<p>
+    目前只是預覽，尚未修改兒童資料。
+</p>
+
+<form method="post">
+    {% csrf_token %}
+
+    <input
+        type="submit"
+        value="確認同步"
+        class="default"
+    >
+
+    <a
+        href="{% url 'admin:children_child_changelist' %}"
+        class="button"
+    >
+        取消
+    </a>
+</form>
+
+{% endif %}
+
+{% endblock %}

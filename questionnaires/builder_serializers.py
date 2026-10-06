@@ -57,6 +57,38 @@ class QuestionEditSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ("id", "section", "options")
 
+    def validate(self, attrs):
+        question_type = attrs.get("question_type", getattr(self.instance, "question_type", None))
+        if question_type != Question.Type.SCALE:
+            return attrs
+
+        config = attrs.get("config", getattr(self.instance, "config", None))
+        if config is None:
+            config = {"min": 1, "max": 5}
+            attrs["config"] = config
+        if not isinstance(config, dict):
+            raise serializers.ValidationError({"config": "量表設定必須是物件。"})
+
+        # Leave an unchanged legacy scale intact; any new or edited range must fit 1–5.
+        if (
+            self.instance
+            and self.instance.question_type == Question.Type.SCALE
+            and config == self.instance.config
+        ):
+            return attrs
+
+        min_value = config.get("min", 1)
+        max_value = config.get("max", 5)
+        if (
+            not isinstance(min_value, int) or isinstance(min_value, bool)
+            or not isinstance(max_value, int) or isinstance(max_value, bool)
+            or not 1 <= min_value <= max_value <= 5
+        ):
+            raise serializers.ValidationError({"config": "量表刻度需為 1 至 5 的整數，且最大刻度不可小於最小刻度。"})
+
+        attrs["config"] = {**config, "min": min_value, "max": max_value}
+        return attrs
+
 
 class SectionEditSerializer(serializers.ModelSerializer):
     questions = QuestionEditSerializer(many=True, read_only=True)

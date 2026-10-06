@@ -120,6 +120,12 @@ class ParentRegistrationForm(UserCreationForm):
 
 
 class ChildForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["birth_date"].widget.attrs["max"] = (
+            timezone.localdate()
+        ).isoformat()
+
     class Meta:
         model = Child
         fields = ("name", "national_id", "birth_date", "tracking_status")
@@ -142,6 +148,8 @@ class ChildForm(forms.ModelForm):
         cleaned_data = super().clean()
         birth_date = cleaned_data.get("birth_date")
         national_id = cleaned_data.get("national_id")
+        if birth_date and birth_date > timezone.localdate():
+            self.add_error("birth_date", "出生日期不可為未來日期。")
         if (
             birth_date
             and (timezone.localdate() - birth_date) > timedelta(days=60)

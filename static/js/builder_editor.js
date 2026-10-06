@@ -197,6 +197,23 @@
           this.afterSave();
         } catch (e) { this.handleErr(e); }
       },
+      onQuestionTypeChange() {
+        if (this.selected.question_type === "scale") {
+          this.selected.config.min = 1;
+          this.selected.config.max = 5;
+        }
+        this.saveQuestion();
+      },
+      updateScaleBound(bound) {
+        const q = this.selected;
+        const value = Number(q.config[bound]);
+        if (!Number.isInteger(value)) return;
+
+        q.config[bound] = Math.min(5, Math.max(1, value));
+        if (bound === "min" && q.config.min > q.config.max) q.config.max = q.config.min;
+        if (bound === "max" && q.config.max < q.config.min) q.config.min = q.config.max;
+        this.saveQuestionDebounced();
+      },
       async deleteQuestion(q) {
         if (!confirm("刪除這一題？")) return;
         try {

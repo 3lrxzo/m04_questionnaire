@@ -208,7 +208,7 @@
           <div class="row">
             <div class="field">
               <label>題型</label>
-              <select v-model="selected.question_type" @change="saveQuestion" :disabled="!tree.is_editable">
+              <select v-model="selected.question_type" @change="onQuestionTypeChange" :disabled="!tree.is_editable">
                 <option value="single">單選</option>
                 <option value="multi">複選</option>
                 <option value="number">數值</option>
@@ -246,8 +246,8 @@
           <!-- 量表設定 -->
           <div v-if="selected.question_type === 'scale'">
             <div class="row">
-              <div class="field"><label>最小刻度</label><input type="number" v-model.number="selected.config.min" @input="saveQuestionDebounced" :disabled="!tree.is_editable"></div>
-              <div class="field"><label>最大刻度</label><input type="number" v-model.number="selected.config.max" @input="saveQuestionDebounced" :disabled="!tree.is_editable"></div>
+              <div class="field"><label>最小刻度（1–5）</label><input type="number" min="1" max="5" step="1" v-model.number="selected.config.min" @input="updateScaleBound('min')" :disabled="!tree.is_editable"></div>
+              <div class="field"><label>最大刻度（1–5）</label><input type="number" min="1" max="5" step="1" v-model.number="selected.config.max" @input="updateScaleBound('max')" :disabled="!tree.is_editable"></div>
             </div>
             <div class="row">
               <div class="field"><label>最小端說明</label><input type="text" v-model="selected.config.min_label" @input="saveQuestionDebounced" :disabled="!tree.is_editable"></div>

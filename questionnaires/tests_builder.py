@@ -78,6 +78,30 @@ class BuilderApiTests(TestCase):
         )
         self.assertEqual(r.json()["value"], "yes")
 
+    def test_scale_question_is_limited_to_values_one_through_five(self):
+        version = self._new_version()
+        section = Section.objects.create(version=version, title="量表", order=1)
+        url = reverse("builder:api-question-create", args=[section.id])
+
+        response = self.client.post(
+            url,
+            data={"prompt": "程度", "question_type": "scale"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.json()["config"]["min"], 1)
+        self.assertEqual(response.json()["config"]["max"], 5)
+
+        response = self.client.post(
+            url,
+            data={
+                "prompt": "太多選項", "question_type": "scale",
+                "config": {"min": 1, "max": 6},
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
     def test_version_builder_returns_full_tree(self):
         version = self._new_version()
         section = Section.objects.create(version=version, title="s", order=1)

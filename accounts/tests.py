@@ -209,6 +209,10 @@ class ChildRegistrationTests(TestCase):
         response = self.client.get(reverse("questionnaires:child-add"))
         self.assertEqual(response.status_code, 200)
         form = response.context["form"]
+        self.assertEqual(
+            form.fields["birth_date"].widget.attrs["max"],
+            timezone.localdate().isoformat(),
+        )
         self.assertFalse(form.fields["national_id"].required)
         self.assertEqual(
             form.fields["tracking_status"].choices,
@@ -222,6 +226,30 @@ class ChildRegistrationTests(TestCase):
         )
         self.assertContains(response, "XXX之子")
         self.assertContains(response, "出生未超過60天可留空")
+
+    def test_child_birth_date_can_be_today(self):
+        response = self.client.post(reverse("questionnaires:child-add"), {
+            "name": "小寶",
+            "national_id": "",
+            "birth_date": timezone.localdate().isoformat(),
+            "tracking_status": "",
+        })
+        self.assertRedirects(
+            response,
+            reverse("questionnaires:child-home", args=[Child.objects.get(name="小寶").id]),
+            fetch_redirect_response=False,
+        )
+
+    def test_child_birth_date_cannot_be_in_the_future(self):
+        response = self.client.post(reverse("questionnaires:child-add"), {
+            "name": "小寶",
+            "national_id": "",
+            "birth_date": (timezone.localdate() + timedelta(days=1)).isoformat(),
+            "tracking_status": "",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "出生日期不可為未來日期。")
+        self.assertFalse(Child.objects.filter(name="小寶").exists())
 
     def test_child_older_than_60_days_requires_national_id(self):
         response = self.client.post(reverse("questionnaires:child-add"), {
