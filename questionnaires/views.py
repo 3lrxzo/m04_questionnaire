@@ -1,12 +1,15 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.clickjacking import xframe_options_sameorigin
+from django.core import signing
+from django.http import HttpResponseForbidden
 
 from accounts.forms import ChildForm
 from children.models import Child
 
 from .logic import get_pending_questionnaires
 from .models import QuestionnaireResponse, QuestionnaireVersion
+
 
 STATE_LABEL = {"in_progress": "未完成", "unrecorded": "未記錄"}
 
@@ -101,8 +104,33 @@ def child_home(request, child_id):
 
 
 @xframe_options_sameorigin  # 供編輯器右欄的預覽 iframe 內嵌（同源）
-@login_required
+
 def fill_page(request, version_id):
+    token = request.GET.get("token")
+
+    if not token:
+        return HttpResponseForbidden("缺少 APP 驗證 Token")
+
+    try:
+        token_data = signing.loads(
+            token,
+            salt="questionnaire-fill",
+            max_age=300,  # 5 分鐘
+        )
+    except signing.SignatureExpired:
+        return HttpResponseForbidden("連結已過期，請回 APP 重新開啟問卷")
+    except signing.BadSignature:
+        return HttpResponseForbidden("無效的問卷連結")
+
+    # Token 裡面的問卷版本必須和網址一致
+    if token_data.get("version_id") != version_id:
+        return HttpResponseForbidden("問卷版本不符")
+
+    # 使用 Token 裡的 UID 找兒童
+    try:
+        child = Child.objects.get(uid=token_data.get("uid"))
+    except Child.DoesNotExist:
+        return HttpResponseForbidden("找不到此兒童")
     """家長端填答頁的外殼。實際的題目呈現與分支邏輯在前端 Vue 元件，
     schema 由 /api/questionnaires/<id>/schema/ 載入。
 
@@ -119,5 +147,5 @@ def fill_page(request, version_id):
     return render(request, "questionnaires/fill.html", {
         "version": version,
         "preview": preview,
-        "child_id": request.GET.get("child", ""),
+        "child_id": child.id,
     })

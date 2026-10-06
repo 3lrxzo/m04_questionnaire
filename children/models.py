@@ -10,7 +10,14 @@ class Child(models.Model):
     不試圖成為完整的病歷主檔。院方日後若提供共用的兒童主檔，本 model 會退化
     成對接用的識別映射，屆時 medical_no 就是接點。
     """
-
+    uid = models.CharField(
+        "APP兒童識別碼",
+        max_length=100,
+        unique=True,
+        null=True,
+        blank=True,
+        db_index=True,
+    )
     name = models.CharField("姓名", max_length=100)
     birth_date = models.DateField("出生日期", help_text="用於計算月齡，供問卷適用規則比對")
     national_id = models.CharField("身分證（選填）", max_length=20, blank=True)
