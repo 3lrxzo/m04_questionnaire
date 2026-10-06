@@ -30,19 +30,10 @@ from .models import (
 
 
 class EligibilityRuleAdminForm(forms.ModelForm):
-    period = forms.ChoiceField(
-        label="適用時期",
-        choices=EligibilityRule.PERIOD_CHOICES,
-    )
     frequency = forms.ChoiceField(
         label="填答頻率",
         choices=(("any", "不限"), ("once", "一次"), ("daily", "每日"),
                  ("weekly", "每週"), ("monthly", "每月")),
-    )
-    timing = forms.ChoiceField(
-        label="建議填答時點",
-        choices=(("any", "不限時點"), ("morning", "早上"), ("afternoon", "下午"),
-                 ("evening", "晚上"), ("before_visit", "就診前"), ("after_visit", "就診後")),
     )
     start_date = forms.DateField(label="適用期間起日", required=False, widget=forms.DateInput(attrs={"type": "date"}))
     end_date = forms.DateField(label="適用期間迄日", required=False, widget=forms.DateInput(attrs={"type": "date"}))
@@ -54,9 +45,7 @@ class EligibilityRuleAdminForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         conditions = (self.instance.condition_json or {}) if self.instance.pk else {}
-        self.fields["period"].initial = conditions.get("period", "any")
         self.fields["frequency"].initial = conditions.get("frequency", "any")
-        self.fields["timing"].initial = conditions.get("timing", "any")
         self.fields["start_date"].initial = conditions.get("start_date") or None
         self.fields["end_date"].initial = conditions.get("end_date") or None
 
@@ -67,9 +56,7 @@ class EligibilityRuleAdminForm(forms.ModelForm):
             self.add_error("end_date", "適用迄日不可早於起日。")
         conditions = dict(self.instance.condition_json or {})
         conditions.update({
-            "period": cleaned.get("period", "any"),
             "frequency": cleaned.get("frequency", "any"),
-            "timing": cleaned.get("timing", "any"),
             "start_date": start.isoformat() if start else "",
             "end_date": end.isoformat() if end else "",
         })
@@ -214,7 +201,7 @@ class EligibilityRuleInline(LockableInline):
     model = EligibilityRule
     form = EligibilityRuleAdminForm
     fields = ("min_age_months", "max_age_months", "tracking_status",
-              "period", "frequency", "timing", "start_date", "end_date")
+              "frequency", "start_date", "end_date")
 
 
 @admin.register(QuestionnaireVersion)
@@ -364,7 +351,7 @@ class EligibilityRuleAdmin(LockWhenPublishedMixin, admin.ModelAdmin):
     list_filter = ("version__status", "version__questionnaire")
     form = EligibilityRuleAdminForm
     fields = ("version", "min_age_months", "max_age_months", "tracking_status",
-              "period", "frequency", "timing", "start_date", "end_date")
+              "frequency", "start_date", "end_date")
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "version":

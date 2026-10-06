@@ -88,7 +88,7 @@
         (this.tree.eligibility_rules || []).forEach((rule) => {
           if (!rule.condition_json) rule.condition_json = {};
           rule.condition_json = Object.assign({
-            period: "any", frequency: "any", timing: "any", start_date: "", end_date: "",
+            frequency: "any", start_date: "", end_date: "",
           }, rule.condition_json);
         });
         // config 可能是 null，補成物件方便 v-model
@@ -320,10 +320,10 @@
       async addEligibilityRule() {
         try {
           const rule = await api(`/api/builder/versions/${cfg.versionId}/eligibility/`, "POST", {
-            condition_json: { period: "any", frequency: "any", timing: "any", start_date: "", end_date: "" },
+            condition_json: { frequency: "any", start_date: "", end_date: "" },
           });
           rule.condition_json = Object.assign({
-            period: "any", frequency: "any", timing: "any", start_date: "", end_date: "",
+            frequency: "any", start_date: "", end_date: "",
           }, rule.condition_json || {});
           this.tree.eligibility_rules.push(rule);
           this.afterSave();

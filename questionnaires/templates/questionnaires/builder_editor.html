@@ -113,7 +113,7 @@
     <!-- 編輯區 -->
     <div class="editor">
       <div class="card2">
-        <h3>適用對象與填答排程</h3>
+        <h3>適用對象與填答頻率</h3>
         <p style="color:var(--muted);font-size:.82rem;margin-top:-8px">
           多條規則採「符合任一條」；完全沒有規則時，所有兒童皆適用。
         </p>
@@ -130,16 +130,6 @@
             <div class="field">
               <label>追蹤狀態（留空不限）</label>
               <input type="text" v-model="rule.tracking_status" @input="saveEligibilityDebounced(rule)" :disabled="!tree.is_editable" placeholder="例如：氣喘追蹤">
-            </div>
-            <div class="field">
-              <label>適用時期</label>
-              <select v-model="rule.condition_json.period" @change="saveEligibility(rule)" :disabled="!tree.is_editable">
-                <option value="any">不限</option>
-                <option value="first_visit">首次使用</option>
-                <option value="daily">日常</option>
-                <option value="phase">階段性</option>
-                <option value="tracking_period">特定追蹤期間</option>
-              </select>
             </div>
             <div class="field">
               <label>填答頻率</label>
@@ -159,24 +149,13 @@
               <label>適用期間迄日（留空不限）</label>
               <input type="date" v-model="rule.condition_json.end_date" @change="saveEligibility(rule)" :disabled="!tree.is_editable">
             </div>
-            <div class="field">
-              <label>建議填答時點（照顧者參考）</label>
-              <select v-model="rule.condition_json.timing" @change="saveEligibility(rule)" :disabled="!tree.is_editable">
-                <option value="any">不限時點</option>
-                <option value="morning">早上</option>
-                <option value="afternoon">下午</option>
-                <option value="evening">晚上</option>
-                <option value="before_visit">就診前</option>
-                <option value="after_visit">就診後</option>
-              </select>
-            </div>
           </div>
           <button v-if="tree.is_editable" class="btn danger small" @click="deleteEligibilityRule(rule)">刪除這條規則</button>
         </div>
         <div v-if="!tree.eligibility_rules.length" class="empty-editor" style="padding:12px">
           目前沒有適用限制；此問卷預設對所有兒童適用。
         </div>
-        <button v-if="tree.is_editable" class="addbtn" @click="addEligibilityRule">＋ 新增適用／排程規則</button>
+        <button v-if="tree.is_editable" class="addbtn" @click="addEligibilityRule">＋ 新增適用規則</button>
       </div>
 
       <div v-if="selectedSection && !selected" >

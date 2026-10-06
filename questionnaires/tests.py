@@ -221,7 +221,7 @@ class AdminSmokeTests(VersionFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "複製為新版本")
 
-    def test_eligibility_admin_form_presents_scheduling_controls(self):
+    def test_eligibility_admin_form_presents_frequency_and_date_controls(self):
         from questionnaires.admin import EligibilityRuleAdminForm
 
         form = EligibilityRuleAdminForm(data={
@@ -229,40 +229,43 @@ class AdminSmokeTests(VersionFixtureMixin, TestCase):
             "min_age_months": "",
             "max_age_months": "",
             "tracking_status": "",
-            "period": "first_visit",
             "frequency": "weekly",
-            "timing": "after_visit",
             "start_date": "2026-10-01",
             "end_date": "2026-12-31",
         })
         self.assertIn("frequency", form.fields)
-        self.assertIn("period", form.fields)
-        self.assertIn("timing", form.fields)
+        self.assertNotIn("period", form.fields)
+        self.assertNotIn("timing", form.fields)
         self.assertIn("start_date", form.fields)
         self.assertIn("end_date", form.fields)
         self.assertTrue(form.is_valid(), form.errors)
         rule = form.save()
-        self.assertEqual(rule.condition_json["period"], "first_visit")
         self.assertEqual(rule.condition_json["frequency"], "weekly")
-        self.assertEqual(rule.condition_json["timing"], "after_visit")
 
-    def test_eligibility_admin_form_supports_all_period_choices(self):
+    def test_eligibility_admin_preserves_legacy_period_and_timing_values(self):
         from questionnaires.admin import EligibilityRuleAdminForm
+        from questionnaires.models import EligibilityRule
 
-        for period in ("any", "first_visit", "daily", "phase", "tracking_period"):
-            with self.subTest(period=period):
-                form = EligibilityRuleAdminForm(data={
-                    "version": self.version.pk,
-                    "min_age_months": "",
-                    "max_age_months": "",
-                    "tracking_status": "",
-                    "period": period,
-                    "frequency": "any",
-                    "timing": "any",
-                    "start_date": "",
-                    "end_date": "",
-                })
-                self.assertTrue(form.is_valid(), form.errors)
+        rule = EligibilityRule.objects.create(
+            version=self.version,
+            condition_json={"period": "first_visit", "timing": "after_visit"},
+        )
+        form = EligibilityRuleAdminForm(
+            instance=rule,
+            data={
+                "version": self.version.pk,
+                "min_age_months": "",
+                "max_age_months": "",
+                "tracking_status": "",
+                "frequency": "weekly",
+                "start_date": "",
+                "end_date": "",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        saved_rule = form.save()
+        self.assertEqual(saved_rule.condition_json["period"], "first_visit")
+        self.assertEqual(saved_rule.condition_json["timing"], "after_visit")
 
     def test_publish_action_publishes(self):
         url = reverse("admin:questionnaires_questionnaireversion_changelist")

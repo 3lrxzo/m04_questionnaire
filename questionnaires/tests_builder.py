@@ -114,17 +114,16 @@ class BuilderApiTests(TestCase):
         self.assertEqual(len(data["sections"]), 1)
         self.assertEqual(len(data["sections"][0]["questions"]), 1)
 
-    def test_builder_page_shows_applicability_and_schedule_controls(self):
+    def test_builder_page_omits_period_and_caregiver_timing_controls(self):
         version = self._new_version()
         response = self.client.get(reverse("builder:editor", args=[version.id]))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "適用時期")
-        self.assertContains(response, "首次使用")
-        self.assertContains(response, "日常")
-        self.assertContains(response, "階段性")
-        self.assertContains(response, "特定追蹤期間")
+        self.assertNotContains(response, "適用時期")
+        self.assertNotContains(response, "首次使用")
+        self.assertNotContains(response, "建議填答時點")
+        self.assertNotContains(response, "照顧者參考")
         self.assertContains(response, "填答頻率")
-        self.assertContains(response, "建議填答時點")
+        self.assertContains(response, "適用期間起日")
 
     # --- 已發布版本鎖定 -------------------------------------------------
 

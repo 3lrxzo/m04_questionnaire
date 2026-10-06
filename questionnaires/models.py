@@ -499,7 +499,7 @@ class EligibilityRule(VersionScopedModel):
     )
     condition_json = models.JSONField(
         "其他條件", default=dict, blank=True,
-        help_text="Builder 以表單設定適用起訖日、填答頻率與建議填答時點。",
+        help_text="Builder 以表單設定適用起訖日與填答頻率。",
     )
 
     class Meta:
