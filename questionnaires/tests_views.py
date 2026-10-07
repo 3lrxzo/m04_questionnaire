@@ -115,6 +115,14 @@ class ChildHomeTests(TestCase):
         self.assertContains(res, "尚未新增孩子資料")
         self.assertContains(res, reverse("accounts:profile"))
 
+    def test_parent_can_open_fill_page_without_token(self):
+        self.client.force_login(self.parent)
+        url = reverse("questionnaires:fill", args=[self.version.id]) + f"?child={self.child.id}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "每日健康檢核")
+        self.assertContains(res, 'data-child-id="%s"' % self.child.id)
+
     def test_requires_login(self):
         res = self.client.get(reverse("questionnaires:child-home", args=[self.child.id]))
         self.assertEqual(res.status_code, 302)

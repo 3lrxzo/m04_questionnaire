@@ -104,40 +104,47 @@ def child_home(request, child_id):
 
 
 @xframe_options_sameorigin  # 供編輯器右欄的預覽 iframe 內嵌（同源）
-
 def fill_page(request, version_id):
-    token = request.GET.get("token")
-
-    if not token:
-        return HttpResponseForbidden("缺少 APP 驗證 Token")
-
-    try:
-        token_data = signing.loads(
-            token,
-            salt="questionnaire-fill",
-            max_age=300,  # 5 分鐘
-        )
-    except signing.SignatureExpired:
-        return HttpResponseForbidden("連結已過期，請回 APP 重新開啟問卷")
-    except signing.BadSignature:
-        return HttpResponseForbidden("無效的問卷連結")
-
-    # Token 裡面的問卷版本必須和網址一致
-    if token_data.get("version_id") != version_id:
-        return HttpResponseForbidden("問卷版本不符")
-
-    # 使用 Token 裡的 UID 找兒童
-    try:
-        child = Child.objects.get(uid=token_data.get("uid"))
-    except Child.DoesNotExist:
-        return HttpResponseForbidden("找不到此兒童")
     """家長端填答頁的外殼。實際的題目呈現與分支邏輯在前端 Vue 元件，
     schema 由 /api/questionnaires/<id>/schema/ 載入。
 
-    ?preview=1 ：預覽模式，允許看草稿、不寫入任何填答（正式文件（三））。
-    ?child=<id>：指定填答對象；正式介接後改由登入身分推導。
+    支援兩種進入方式：
+    1) APP / 外部系統：帶 ?token=...，以 UID + version_id 驗證。
+    2) 家長網頁：登入後帶 ?child=<id>，直接開始填寫自己名下的問卷。
+    ?preview=1：預覽模式，允許看草稿、不寫入任何填答（正式文件（三)）。
     """
     preview = request.GET.get("preview") == "1"
+    token = request.GET.get("token")
+    child = None
+
+    if token:
+        try:
+            token_data = signing.loads(
+                token,
+                salt="questionnaire-fill",
+                max_age=300,  # 5 分鐘
+            )
+        except signing.SignatureExpired:
+            return HttpResponseForbidden("連結已過期，請回 APP 重新開啟問卷")
+        except signing.BadSignature:
+            return HttpResponseForbidden("無效的問卷連結")
+
+        if token_data.get("version_id") != version_id:
+            return HttpResponseForbidden("問卷版本不符")
+
+        try:
+            child = Child.objects.get(uid=token_data.get("uid"))
+        except Child.DoesNotExist:
+            return HttpResponseForbidden("找不到此兒童")
+    elif preview:
+        child = None
+    else:
+        child_id = request.GET.get("child")
+        if not child_id:
+            return HttpResponseForbidden("缺少填答對象，請從家長頁面重新開啟問卷")
+        if not request.user.is_authenticated:
+            return HttpResponseForbidden("請先登入後再填寫問卷")
+        child = get_object_or_404(_children_for(request), pk=child_id)
 
     version_qs = QuestionnaireVersion.objects.select_related("questionnaire")
     if not preview:
@@ -147,5 +154,5 @@ def fill_page(request, version_id):
     return render(request, "questionnaires/fill.html", {
         "version": version,
         "preview": preview,
-        "child_id": child.id,
+        "child_id": child.id if child else "",
     })
